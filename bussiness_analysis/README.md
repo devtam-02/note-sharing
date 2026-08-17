@@ -40,7 +40,7 @@ Nếu chỉ có 60 phút, đọc theo thứ tự:
 | Phân phối ưu đãi tự động | [flows/04-phan-phoi-uu-dai.md](flows/04-phan-phoi-uu-dai.md) |
 | Kiểm tra hợp lệ và cộng dồn | [flows/05-kiem-tra-hop-le-va-cong-don.md](flows/05-kiem-tra-hop-le-va-cong-don.md) |
 | Đổi thưởng và hoàn tác | [flows/06-doi-thuong-va-hoan-tac.md](flows/06-doi-thuong-va-hoan-tac.md) |
-| Trải nghiệm trên app Viettel Money | [flows/07-mobile-viettel-money.md](flows/07-mobile-viettel-money.md) |
+| Trải nghiệm trên app VT MN | [flows/07-mobile-vt-mn.md](flows/07-mobile-vt-mn.md) |
 | Tra cứu khiếu nại cho CSKH | [flows/08-tra-cuu-cskh.md](flows/08-tra-cuu-cskh.md) |
 
 ## Nguyên tắc sử dụng

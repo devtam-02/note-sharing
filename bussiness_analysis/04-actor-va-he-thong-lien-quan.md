@@ -21,7 +21,7 @@
 | Core Transfer - Tanzania | Kết quả chuyển tiền | Yêu cầu chuyển Cashback |
 | DMP | Customer, Segment, Event, Transaction | Có thể nhận trạng thái/xử lý tùy tích hợp |
 | CEP | Sự kiện tương tác, yêu cầu phát ưu đãi | Voucher/thông tin phân phối |
-| App Viettel Money | Customer, Order, yêu cầu Qualification/Validation/Redemption | Danh sách voucher, giá trị giảm, kết quả |
+| App VT MN | Customer, Order, yêu cầu Qualification/Validation/Redemption | Danh sách voucher, giá trị giảm, kết quả |
 | Dịch vụ thanh toán | Trạng thái thanh toán | Giá trị giảm và voucher đã chọn |
 | Notification System | Kết quả gửi SMS/Push/Email | Yêu cầu gửi thông báo |
 | CSKH CMS | Số điện thoại và yêu cầu tra cứu | Voucher, trạng thái, lỗi và audit trail |
@@ -36,7 +36,7 @@ flowchart TD
     D["Transaction Manager"] --> B
     B --> E["Core Transfer"]
     B --> F["Notification"]
-    G["App Viettel Money"] <--> B
+    G["App VT MN"] <--> B
     H["CSKH"] <--> B
     B --> I["BI/Reporting"]
 ```

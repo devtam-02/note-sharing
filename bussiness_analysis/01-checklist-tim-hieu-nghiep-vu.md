@@ -11,7 +11,7 @@
 ## 2. Phạm vi theo giai đoạn
 
 - [x] Phase 1: MVP Tanzania, trọng tâm Cashback và Segment.
-- [x] Phase 2: Coupon/Voucher, Distribution, Validation, Stacking, Category, Metadata và tích hợp Viettel Money.
+- [x] Phase 2: Coupon/Voucher, Distribution, Validation, Stacking, Category, Metadata và tích hợp VT MN.
 - [ ] Xác nhận chức năng nào của Phase 2 đã hoàn thành, đang phát triển hoặc bị defer.
 
 ## 3. Luồng nghiệp vụ cần nắm

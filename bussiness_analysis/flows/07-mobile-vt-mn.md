@@ -1,4 +1,4 @@
-# Phase 2 - Trải nghiệm ưu đãi trên App Viettel Money
+# Phase 2 - Trải nghiệm ưu đãi trên App VT MN
 
 ## Mục tiêu
 
@@ -6,7 +6,7 @@ Cho phép khách hàng xem, tìm kiếm, chọn và áp dụng Voucher trong lu�
 
 ## Actor
 
-- Khách hàng đã đăng nhập App Viettel Money.
+- Khách hàng đã đăng nhập App VT MN.
 - NVVH cấu hình SDK, whitelist và rollout.
 - App host và dịch vụ thanh toán.
 

@@ -49,7 +49,7 @@ Phase 2 mở rộng năng lực Coupon/Voucher cho VDS:
 - Stacking Rule.
 - Distribution Rule.
 - Redemption và Rollback.
-- Tích hợp App Viettel Money.
+- Tích hợp App VT MN.
 - Tra cứu voucher cho CSKH.
 
 Luồng giá trị chính:
