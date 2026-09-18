@@ -58,53 +58,54 @@ sequenceDiagram
     participant R as CustomerVoucherViewRepository
     participant DB as MariaDB customer_voucher_view
     participant M as CustomerVoucherViewMapper
-    participant SC as ServiceCatalogAdapter (pp-product)
+    participant SC as ServiceCatalogAdapter
 
-    App->>F: GET /api/v1/vtm/customer-vouchers/{voucherId}?service=...<br/>Authorization: Bearer <JWT>
-    F->>F: verify RS256 + exp → VtmUserContextHolder.set(user)
-    alt token hỏng
-        F-->>App: 401 {code: UNAUTHORIZED}
+    App->>F: GET customer-vouchers voucherId voi tham so service va header Authorization
+    F->>F: verify RS256 va han dung roi dat VtmUserContextHolder
+    alt token hong
+        F-->>App: 401 UNAUTHORIZED
     end
     F->>C: doFilter
-    C->>C: @NotBlank @Size(max=100) voucherId · @Size(max=100) service
-    note right of C: vi phạm → 400 INVALID_PARAMS
-    C->>S: useCase.getDetail(voucherId, service)
-    S->>S: cid = claim "usr" (msisdn)
-    note right of S: rỗng → 422 PP-BFF-VTM-2006
-    S->>A: voucherApi.getDetail(voucherId, cid, service)
+    C->>C: NotBlank va Size toi da 100 cho voucherId va service
+    note right of C: vi pham thi tra ve 400 INVALID_PARAMS
+    C->>S: useCase getDetail
+    S->>S: cid lay tu claim usr la msisdn
+    note right of S: rong thi nem 422 PP-BFF-VTM-2006
+    S->>A: voucherApi getDetail
 
-    A->>A: now = Instant.now(), locale = Accept-Language (mặc định vi-VN)
-    A->>R: findByCustomerSourceIdAndVoucherId(cid, voucherId)
-    R->>DB: SELECT ... WHERE customer_source_id=? AND voucher_id=?
-    alt tìm thấy
+    A->>A: lay now va locale tu Accept-Language
+    A->>R: findByCustomerSourceIdAndVoucherId
+    R->>DB: Q1 SELECT tren customer_voucher_view loc theo customer_source_id va voucher_id
+    alt tim thay
         DB-->>A: row
-    else không thấy
-        A->>R: findFirstByCustomerSourceIdAndCampaignIdOrderByCreatedAtDesc(cid, voucherId)
-        R->>DB: SELECT ... WHERE customer_source_id=? AND campaign_id=? ORDER BY created_at DESC LIMIT 1
-        alt tìm thấy
-            DB-->>A: row (bản mới nhất)
-        else vẫn không thấy
-            A->>R: existsByVoucherId(voucherId) OR existsByCampaignId(voucherId)
-            R->>DB: SELECT COUNT/EXISTS ...
-            alt có tồn tại ở kho của khách KHÁC
+    else khong thay
+        A->>R: findFirstByCustomerSourceIdAndCampaignIdOrderByCreatedAtDesc
+        R->>DB: Q2 SELECT tren customer_voucher_view loc theo campaign_id sap xep created_at giam dan lay 1 dong
+        alt tim thay
+            DB-->>A: row la ban moi nhat
+        else van khong thay
+            A->>R: existsByVoucherId hoac existsByCampaignId
+            R->>DB: Q3 va Q4 SELECT EXISTS tren customer_voucher_view khong loc chu so huu
+            alt co ton tai o kho cua khach KHAC
                 A-->>App: 403 FORBIDDEN_VOUCHER_OWNERSHIP
-            else không tồn tại ở đâu cả
+            else khong ton tai o dau ca
                 A-->>App: 404 VOUCHER_NOT_FOUND
             end
         end
     end
 
-    A->>A: serviceApplies = matchesService(row, service)
-    A->>M: toItem(row, serviceApplies, now, locale)
-    M->>M: releaseExpiredReservation → CampaignStatusPolicy → effectiveStatus → label
-    opt applies_to_all=1 AND discount_method=APPLY_TO_ORDER AND không có INCLUDED
-        M->>SC: loadAllServices() (@Cacheable Redis 30m)
+    A->>A: serviceApplies tinh boi matchesService
+    A->>M: toItem voi row va serviceApplies
+    M->>M: releaseExpiredReservation roi CampaignStatusPolicy roi effectiveStatus roi label
+    opt voucher ap dung cho moi dich vu
+        M->>SC: loadAllServices co cache Redis 30 phut
     end
     M-->>A: OfferItem
     A-->>S: OfferItem
     S-->>C: OfferItem
-    C-->>App: 200 ResponseTemplate{data: OfferItem}
-    F->>F: finally VtmUserContextHolder.clear()
+    C-->>App: 200 ResponseTemplate boc OfferItem
+    F->>F: finally VtmUserContextHolder clear
+    note over R,DB: Luong chinh chi cham DUY NHAT doi tuong<br/>promotion_vtm_bff.customer_voucher_view
 ```
 
 ---
@@ -113,19 +114,19 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A["getDetail(voucherId, cid, service)"] --> B["findByCustomerSourceIdAndVoucherId(cid, voucherId)"]
-    B -->|có| OK[row]
-    B -->|không| C["findFirstByCustomerSourceIdAndCampaignId...OrderByCreatedAtDesc(cid, voucherId)"]
-    C -->|có| OK
-    C -->|không| D{"existsByVoucherId(voucherId)<br/>OR existsByCampaignId(voucherId)"}
-    D -->|true — tồn tại nhưng của người khác| E["VoucherOwnershipException<br/>403 FORBIDDEN_VOUCHER_OWNERSHIP"]
-    D -->|false — không tồn tại ở đâu| G["VoucherNotFoundException<br/>404 VOUCHER_NOT_FOUND"]
-    OK --> H["matchesService(row, service)"]
-    H --> I["mapper.toItem(row, serviceApplies, now, locale)"]
+    A["getDetail voi voucherId cid service"] --> B["Q1 findByCustomerSourceIdAndVoucherId"]
+    B -->|"co"| OK["row"]
+    B -->|"khong"| C["Q2 findFirstByCustomerSourceIdAndCampaignIdOrderByCreatedAtDesc"]
+    C -->|"co"| OK
+    C -->|"khong"| D{"Q3 existsByVoucherId hoac<br/>Q4 existsByCampaignId"}
+    D -->|"true, ton tai nhung cua nguoi khac"| E["VoucherOwnershipException<br/>403 FORBIDDEN_VOUCHER_OWNERSHIP"]
+    D -->|"false, khong ton tai o dau"| G["VoucherNotFoundException<br/>404 VOUCHER_NOT_FOUND"]
+    OK --> H["matchesService row service"]
+    H --> I["mapper.toItem voi serviceApplies"]
 
-    style E fill:#8a2f2f,color:#fff
-    style G fill:#8a5a2f,color:#fff
-    style OK fill:#1f6f3f,color:#fff
+    style E fill:#8a2f2f,color:#ffffff
+    style G fill:#8a5a2f,color:#ffffff
+    style OK fill:#1f6f3f,color:#ffffff
 ```
 
 Hai điểm đáng nhớ:
@@ -172,7 +173,7 @@ Nói cách khác: `service` ở #12 là **tham số hiển thị**, ở #13 là 
 
 ## 7. Map row → `OfferItem` (dùng chung với #13)
 
-`CustomerVoucherViewMapper.toItem(row, serviceApplies, now, locale)` — chi tiết đầy đủ ở §7 của tài liệu #13. Chuỗi tính trạng thái:
+`CustomerVoucherViewMapper.toItem(row, serviceApplies, now, locale)` — chi tiết đầy đủ ở §8 của tài liệu #13. Chuỗi tính trạng thái:
 
 ```
 status thô (voucher_ownership.status)
@@ -296,7 +297,7 @@ Dựng một `OfferItem` tĩnh (`camp-mock-0001`, hết hạn sau 5 ngày), có 
 
 ## 11. Read model và module liên quan
 
-Nguồn dữ liệu giống hệt #13 — VIEW `customer_voucher_view` join `voucher_ownership` ⋈ `campaign_offer` ⋈ `coupon_display` ⋈ `validation_rule`, nuôi bằng 6 Kafka projection. Xem §11 của tài liệu #13 cho sơ đồ đầy đủ.
+Nguồn dữ liệu giống hệt #13 — VIEW `customer_voucher_view` join `voucher_ownership` ⋈ `campaign_offer` ⋈ `coupon_display` ⋈ `validation_rule`, nuôi bằng 6 Kafka projection. Xem §12 của tài liệu #13 cho sơ đồ đầy đủ.
 
 Riêng #12 phụ thuộc thêm vài cột mà #13 không đụng tới: `vr_min_order_value` / `vr_max_order_value` (từ **pp-validation**), `discount_percentage` / `discount_label` (từ **pp-pricing-engine** qua `p2_promotion-discount`), `usage_guide_url` (từ **pp-coupon** qua `coupon_display`).
 
@@ -313,7 +314,7 @@ Riêng #12 phụ thuộc thêm vài cột mà #13 không đụng tới: `vr_min_
 | `ServiceCatalogPort` — bung `applicableProducts` | `p2_promotion-product` | ✅ |
 | **Nhánh Feign dự phòng của #12** (`/v1/customer-vouchers/{id}`) | `p2_promotion-redemption` | ✅ |
 
-Không thiếu repo nào. Thứ còn thiếu vẫn là cấu hình ngoài repo (`app.kafka.topics.customer-event`, định nghĩa VIEW thật trên môi trường, spec `12-get-customer-voucher-detail.md`) — chi tiết ở §12 của tài liệu #13.
+Không thiếu repo nào. Thứ còn thiếu vẫn là cấu hình ngoài repo (`app.kafka.topics.customer-event`, định nghĩa VIEW thật trên môi trường, spec `12-get-customer-voucher-detail.md`) — chi tiết ở §13 của tài liệu #13.
 
 ---
 
