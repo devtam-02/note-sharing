@@ -38,7 +38,6 @@ Nguồn: 6 consumer trong `adapter/in/messaging/`.
 | 6 | `promotion_segment_event` | `SegmentMembershipRemovedEvent` | `CUSTOMER_LEFT_SEGMENT` | `SegmentMembershipConsumer:41` |
 | 7 | `promotion-cashback-events` | `CashbackSuccessEvent` | `CASHBACK_SUCCEEDED` | `CashbackEventConsumer:25` |
 | 8 | `promotion_redemption_confirmed` | *(hardcode, không map)* | `REWARD_REDEEMED` | `RedemptionConfirmedConsumer:20` |
-| 9 | `promotion_custom_event` | **`$.type` dùng trực tiếp** | **bất kỳ code nào** | `CustomEventConsumer:29` |
 
 ### Ý nghĩa của dòng số 9
 
