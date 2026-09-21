@@ -14,15 +14,12 @@
 
 ```mermaid
 flowchart TB
-    subgraph IN["CỬA VÀO (3 đường)"]
+    subgraph IN["CỬA VÀO"]
         K1["Kafka · 6 topic<br/>6 @KafkaListener"]
-        K2["REST POST /redemption-events<br/>RedemptionEventController"]
-        K3["Outbox relay<br/>(rule lifecycle — KHÔNG tạo distribution)"]
     end
 
     subgraph DISPATCH["TẦNG 1 — DISPATCH (thread Kafka consumer)"]
         RD["RuleDispatchService.dispatch()"]
-        PR["ProcessRedemptionEventService.process()<br/>@Transactional @Retryable(3)"]
         EV["DistributionRuleEvaluationService<br/>findApplicableRules()"]
         MG1[("Mongo<br/>distribution_rules<br/>status=RUNNING")]
         ACT{"action.code<br/>== SEND_VOUCHER?"}
@@ -50,9 +47,7 @@ flowchart TB
     end
 
     K1 --> RD
-    K2 --> PR
     RD --> EV
-    PR --> EV
     EV --> MG1
     EV --> ACT
     ACT -- "có" --> CP
@@ -71,7 +66,6 @@ flowchart TB
     style ACT fill:#ffe8cc,stroke:#c83,stroke-width:2px
     style MG2 fill:#efe,stroke:#393,stroke-width:2px
     style DLQ fill:#fee,stroke:#c33
-    style K3 fill:#eee,stroke:#999
 ```
 
 > **Cửa vào thứ 3 không tạo distribution**: outbox `promotion_distribution_rule_event`
