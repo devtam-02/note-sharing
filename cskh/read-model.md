@@ -100,6 +100,29 @@ erDiagram
     customer_voucher_view }o--|| voucher_ownership : "LEFT JOIN 3 bang con lai"
 ```
 
+### Vai trò của từng bảng
+
+| Bảng | Giữ cái gì | Trả lời câu hỏi nào | Khoá chính |
+|---|---|---|---|
+| `voucher_ownership` | Quan hệ **một khách hàng sở hữu một mã** — và trạng thái hiện tại của quan hệ đó | "Khách này đang có những mã nào, mỗi mã đang ở trạng thái gì?" | `id` |
+| `campaign_offer` | Thuộc tính **mức chiến dịch**: loại, trạng thái, thời gian hiệu lực, phạm vi sản phẩm, cấu hình giảm giá | "Chiến dịch này còn chạy không, áp cho sản phẩm nào, giảm bao nhiêu?" | `campaign_id` |
+| `coupon_display` | Thông tin **hiển thị** của một coupon config: tiêu đề, tên đơn vị, mô tả, ảnh | "Hiện cái gì lên màn hình cho mã này?" | `coupon_config_id` |
+| `validation_rule` | Luật kiểm tra nhanh khi áp mã: ngưỡng giá trị đơn tối thiểu và tối đa | "Đơn hàng có đủ điều kiện dùng mã không?" | `rule_id` |
+| `customer_voucher_view` | **Không giữ gì** — là VIEW ghép 4 bảng trên | Là thứ duy nhất tầng ứng dụng đọc, để truy vấn không phải tự join | — |
+
+Ba điểm đáng chú ý về cách phân chia:
+
+**`voucher_ownership` là bảng sự kiện hoá, không phải danh mục voucher.** Mỗi dòng ứng với một lần
+cấp mã cho một khách cụ thể. Chiến dịch chưa phát mã cho ai thì **không có dòng nào** — đây chính
+là lý do nghiệp vụ CSKH cần thêm `campaign_stock` (xem mục 2.2).
+
+**`campaign_offer` có hai đường ghi tách bạch** và cố ý không gộp: pp-campaign ghi nhóm meta,
+pp-cashback ghi nhóm giảm giá qua `upsertDiscount`. Trộn hai nguồn vào một đường sẽ thành hai bên
+cùng ghi đè một nhóm cột.
+
+**Tách `coupon_display` khỏi `campaign_offer`** vì chúng khác khoá: một chiến dịch có thể có nhiều
+coupon config. Gộp lại sẽ phải nhân bản thuộc tính chiến dịch cho mỗi config.
+
 ### Đường ghi dữ liệu hiện tại
 
 | Bảng | Consumer | Topic | Service nguồn |
@@ -116,7 +139,7 @@ giảm giá. Ranh giới này là cố ý — xem chú thích trong `CampaignDet
 
 ### View `customer_voucher_view`
 
-Định nghĩa mới nhất ở changeset `020-validation-order-bounds.xml`, gồm **54 cột**, join:
+Định nghĩa mới nhất ở changeset `020-validation-order-bounds.xml`, gồm **53 cột**, join:
 
 ```sql
 FROM voucher_ownership o
@@ -177,7 +200,7 @@ erDiagram
     validation_rule {
         string rule_id PK
     }
-    cskh_campaign_stock {
+    campaign_stock {
         string campaign_id PK "BANG MOI"
         int total_code_count "tu CouponConfigCreatedEvent.voucherCount"
         int unassigned_code_count "CAN NGUON"
@@ -185,7 +208,7 @@ erDiagram
         string shared_code "CAN NGUON"
         instant updated_at
     }
-    cskh_offer_audit {
+    offer_audit {
         string id PK "BANG MOI"
         string customer_source_id
         string campaign_id
@@ -199,11 +222,6 @@ erDiagram
         string event_id
         instant created_at
     }
-    processed_event {
-        string event_id PK "BANG MOI - idempotency"
-        string topic
-        instant processed_at
-    }
     customer_voucher_view {
         string id PK "VIEW - them 8 cot moi"
     }
@@ -211,8 +229,8 @@ erDiagram
     voucher_ownership ||--o| campaign_offer : "campaign_id"
     voucher_ownership ||--o| coupon_display : "coupon_config_id"
     campaign_offer    ||--o| validation_rule : "validation_rule_id"
-    campaign_offer    ||--o| cskh_campaign_stock : "campaign_id"
-    cskh_offer_audit  }o--|| campaign_offer : "campaign_id"
+    campaign_offer    ||--o| campaign_stock : "campaign_id"
+    offer_audit  }o--|| campaign_offer : "campaign_id"
     customer_voucher_view }o--|| voucher_ownership : "LEFT JOIN"
 ```
 
@@ -220,7 +238,7 @@ erDiagram
 
 | Bảng | Cột | Kiểu | Nguồn | Phục vụ |
 |---|---|---|---|---|
-| `voucher_ownership` | `assignment_status` | varchar(32) | suy từ bản ghi + `cskh_campaign_stock` | Cột và filter Trạng thái gán mã |
+| `voucher_ownership` | `assignment_status` | varchar(32) | suy từ bản ghi + `campaign_stock` | Cột và filter Trạng thái gán mã |
 | | `assigned_at` | datetime(6) | `received_at` đang có | Cột Ngày gán |
 | | `usage_status` | varchar(32) | consumer redemption và cashback | Cột và filter Trạng thái sử dụng |
 | | `last_session_id` | varchar(64) | consumer redemption | Cột Mã phiên ở audit |
@@ -238,24 +256,28 @@ dù giá trị ban đầu chép từ đó. Cần xác nhận `received_at` đún
 
 ### 2.2 Bảng mới
 
-| Bảng | Khoá chính | Vì sao cần | Ghi bởi |
+| Bảng | Giữ cái gì | Vì sao hôm nay chưa có | Ghi bởi |
 |---|---|---|---|
-| `cskh_offer_audit` | `id` | `getAuditTrail` hoàn toàn không có nguồn hôm nay | `RedemptionAuditConsumer`, `CashbackAuditConsumer`, `VoucherProjectionConsumer` mở rộng |
-| `processed_event` | `event_id` | Mục 4.4 yêu cầu chống xử lý trùng | Mọi consumer mới |
-| `cskh_campaign_stock` | `campaign_id` | Phân biệt "Chưa gán" với "Chưa sinh mã"; dựng bản ghi giả lập | Consumer tồn kho mã của pp-coupon |
+| `offer_audit` | **Lịch sử tác động**: mỗi dòng là một hành động đã xảy ra với một mã hoặc một giao dịch hoàn tiền — gán mã, tạo phiên, xác nhận, huỷ, hoàn tác, phát sinh cashback | Read model hiện chỉ giữ **trạng thái hiện tại**, không giữ diễn biến. `voucher_ownership.status` cho biết mã đang ở đâu nhưng không cho biết nó đã đi qua những bước nào | `RedemptionAuditConsumer`, `CashbackAuditConsumer`, `VoucherProjectionConsumer` mở rộng |
+| `campaign_stock` | **Tồn kho mã của chiến dịch**: tổng số mã, số chưa gán, cờ sinh mã tự động, giá trị mã chung | `voucher_ownership` chỉ có dòng khi mã **đã được gán**. Chiến dịch còn mã chưa phát cho ai thì read model hoàn toàn không biết gì về nó | Consumer tồn kho mã của pp-coupon |
 
-Đặt tiền tố `cskh_` cho bảng chỉ phục vụ nghiệp vụ CSKH để ranh giới rõ ràng — nếu sau này tách
-sang service riêng thì biết chính xác phải mang theo những gì. `processed_event` không mang tiền tố
-vì là hạ tầng dùng chung cho mọi consumer.
+Ba bảng đặt tên không tiền tố, đồng bộ với các bảng read model sẵn có
+(`voucher_ownership`, `campaign_offer`, `coupon_display`, `validation_rule`).
+
+`campaign_stock` giải quyết hai yêu cầu mà không bảng nào hiện có trả lời được:
+
+- Phân biệt **"Chưa gán"** (chiến dịch còn mã, khách chưa được nhận) với **"Chưa sinh mã"**
+  (chiến dịch chưa có mã nào) — hai giá trị khác nhau ở cột Trạng thái gán mã.
+- Dựng **bản ghi giả lập** theo SRS mục 4.4: khách chưa có mã nhưng chiến dịch đang chạy thì vẫn
+  phải hiện một dòng với nhãn "Còn mã", "-" hoặc giá trị mã chung.
 
 ### 2.3 Chỉ mục đề xuất
 
 | Bảng | Chỉ mục | Vì sao |
 |---|---|---|
 | `voucher_ownership` | `(customer_source_id, campaign_id)` | Điều kiện lọc bắt buộc của `searchCustomerOffers` |
-| `cskh_offer_audit` | `(customer_source_id, campaign_id, occurred_at DESC)` | Truy vấn chính của `getAuditTrail`, đã kèm thứ tự sắp xếp |
-| `cskh_offer_audit` | `(voucher_code)` | Lọc theo mã ưu đãi |
-| `cskh_offer_audit` | `(event_id)` unique | Chặn ghi trùng ở tầng DB, không chỉ dựa vào `processed_event` |
+| `offer_audit` | `(customer_source_id, campaign_id, occurred_at DESC)` | Truy vấn chính của `getAuditTrail`, đã kèm thứ tự sắp xếp |
+| `offer_audit` | `(voucher_code)` | Lọc theo mã ưu đãi |
 
 ### 2.4 Đường ghi dữ liệu sau khi mở rộng
 
@@ -284,21 +306,18 @@ flowchart LR
     P5 --> T3[("coupon_display")]
     P6 --> T4[("validation_rule")]
 
-    P1 --> T5[("cskh_offer_audit")]
+    P1 --> T5[("offer_audit")]
     P7 --> T5
     P8 --> T5
     P7 --> T1
     P8 --> T1
-    P7 --> T6[("processed_event")]
-    P8 --> T6
-    P5 --> T7[("cskh_campaign_stock")]
+    P5 --> T6[("campaign_stock")]
 
     T1 & T2 & T3 & T4 --> V["customer_voucher_view"]
 
     style NEW fill:#eef,stroke:#66a
     style T5 fill:#efe,stroke:#393
     style T6 fill:#efe,stroke:#393
-    style T7 fill:#efe,stroke:#393
 ```
 
 Mũi tên nét đứt là lookup REST lúc xử lý event, theo mẫu `CampaignCreatedAtBackfillService` đang có.
@@ -311,8 +330,8 @@ Mũi tên nét đứt là lookup REST lúc xử lý event, theo mẫu `CampaignC
 |---|---|
 | Bảng giữ nguyên cấu trúc | 1 (`validation_rule`) |
 | Bảng thêm cột | 3 (`voucher_ownership` +6, `campaign_offer` +1, `coupon_display` +1) |
-| Bảng mới | 3 |
-| View định nghĩa lại | 1 (thêm 8 cột, giữ nguyên 54 cột cũ) |
+| Bảng mới | 2 |
+| View định nghĩa lại | 1 (thêm 8 cột, giữ nguyên 53 cột cũ) |
 | Consumer mới | 2 |
 | Consumer mở rộng | 3 (`VoucherProjectionConsumer`, `CampaignProjectionConsumer`, `CouponDisplayProjectionConsumer`) |
 | Endpoint backfill mới | 2 |
@@ -327,7 +346,7 @@ về mặt schema. Vẫn cần chạy hồi quy vì view bị `DROP` rồi `CREA
 
 | # | Vấn đề | Ảnh hưởng |
 |---|---|---|
-| 1 | Nguồn của `unassigned_code_count`, `auto_generate`, `shared_code` — pp-coupon bổ sung event hay lookup REST? | `cskh_campaign_stock` chưa điền được |
+| 1 | Nguồn của `unassigned_code_count`, `auto_generate`, `shared_code` — pp-coupon bổ sung event hay lookup REST? | `campaign_stock` chưa điền được |
 | 2 | `received_at` có đúng là thời điểm gán mã không? | `assigned_at` có thể sai ngữ nghĩa |
 | 3 | Điều kiện "khách thoả cấu hình segment" của bản ghi giả lập — read model không lưu segment | Có thể phát sinh bảng thứ tư |
 | 4 | Ba trạng thái `DISABLING`, `DELETING`, `DELETED` của pp-campaign gom về đâu | Ánh xạ `campaign_status` |
