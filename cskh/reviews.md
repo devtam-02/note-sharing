@@ -7,42 +7,45 @@
 - **Ngày review:** 2026-10-15. Đầu nhánh lúc review: `5685a0c25f`
 - **Tiêu chí:** đúng/sai logic, idempotency/race, transaction, migration, hiệu năng, bảo mật (authz, PII), contract API, test, Sonar S3776/S1192/S125/S1128
 
-## Kết luận chung: ❌ CHƯA NÊN MERGE
+## Kết luận chung: ⚠️ CẦN SỬA TRƯỚC KHI MERGE (không còn blocker)
 
-**Blocker của cả PR (chưa commit nào sửa):** vùng `/api/cskh/v1/**` không có xác thực. `VtmAuthFilter` chỉ lọc đường dẫn chứa `/api/v1/` (`VtmAuthProperties.protectedPathPrefixes`), và Javadoc của `CustomerCareController` cũng tự ghi là chưa có filter. Không có `@PreAuthorize` hay SecurityFilterChain nào. Ở đầu nhánh, các API search, audit trail và campaign-detail đều đã trả dữ liệu thật: ưu đãi, mã voucher, lịch sử của bất kỳ msisdn nào. `InternalBackfillController` cũng nằm ngoài `/api/v1/` nên public tương tự. *(Đã kiểm lại trực tiếp trên `5685a0c`. Nếu auth được chặn ở gateway/ingress thì cần xác nhận bằng config hạ tầng, và phải chặn route backfill từ bên ngoài.)*
+Không còn finding 🔴 nào ở đầu nhánh. Tuy vậy PR còn nhiều lỗi 🟠 về đúng sai dữ liệu: gán nhầm khách với mã chung, mất event lịch sử, backfill lặp vô hạn, API chi tiết chiến dịch dễ lỗi 500 khi tải cao. Nên sửa các lỗi này trước khi merge vào staging.
+
+**Phạm vi đã loại (theo xác nhận của chủ PR, 2026-10-16):**
+- Xác thực/phân quyền cho vùng `/api/cskh/v1/**`: được triển khai theo hướng khác, ngoài PR này. Các finding liên quan vẫn giữ lại trong file với trạng thái `⚪ Dismissed`, không tính vào số đếm.
+- `InternalBackfillController` (`/internal/backfill`): chỉ dùng nội bộ, gateway chỉ mở các path `/api/v1/` ra ngoài. Không phải lỗ hổng.
 
 ### Bảng tổng hợp
 
 | # | Commit | Nội dung | Đánh giá | 🔴 | 🟠 | 🟡 | 🔵 |
 |---|---|---|---|---|---|---|---|
-| 1 | 71f689e | API spec | ⚠️ | 1 | 1 | 4 | 2 |
+| 1 | 71f689e | API spec | ⚠️ | 0 | 1 | 4 | 2 |
 | 2 | 41e1902 | Read model schema | ⚠️ | 0 | 1 | 2 | 2 |
 | 3 | 9f26958 | Backfill campaign_code/coupon_type | ❌ tại commit (đã sửa ở 4c45595) | 2 | 1 | 3 | 2 |
 | 4 | 0a20898 | Fill campaign_code/coupon_type live path | ⚠️ | 0 | 0 | 3 | 2 |
 | 5 | 4c45595 | Assignment status + campaign stock | ⚠️ | 0 | 2 | 7 | 2 |
 | 6 | b30d84d | Backfill assignment status | ⚠️ | 0 | 1 | 3 | 1 |
 | 7 | 1ff368a | Project offer history/usage | ⚠️ | 0 | 6 | 4 | 2 |
-| 8 | 489122a | Customer offer search | ❌ | 1 | 3 | 6 | 0 |
+| 8 | 489122a | Customer offer search | ⚠️ | 0 | 3 | 6 | 0 |
 | 9 | d2df587 | Offers khách chưa có code | ⚠️ | 0 | 2 | 2 | 0 |
 | 10 | fc62ac2 | Msisdn 0xxx / 84xxx | ✅ | 0 | 0 | 1 | 2 |
-| 11 | 90cc652 | Offer audit trail | ❌ | 1 | 0 | 6 | 0 |
+| 11 | 90cc652 | Offer audit trail | ⚠️ (nhẹ) | 0 | 0 | 6 | 0 |
 | 12 | cc01d14 | Fix applicableProducts | ⚠️ | 0 | 1 | 2 | 4 |
-| 13 | 5685a0c | API gộp chi tiết chiến dịch | ⚠️ | 0 | 4 | 9 | 4 |
+| 13 | 5685a0c | API gộp chi tiết chiến dịch | ⚠️ | 0 | 3 | 9 | 4 |
 
-> Các 🔴 ở 71f689e, 489122a, 90cc652 cùng là một lỗ hổng xác thực, được tính lại ở mỗi commit mở thêm endpoint. 🔴 ở 9f26958 (map trùng cột `campaign_type` khiến app không khởi động, test không compile) đã sửa ở 4c45595. Hệ quả là commit đó không bisect được.
+> Số đếm đã loại 4 finding về xác thực `/api/cskh/v1` (ở 71f689e, 489122a, 90cc652, 5685a0c). 🔴 duy nhất còn lại ở 9f26958 (map trùng cột `campaign_type` khiến app không khởi động, test không compile) đã sửa ở 4c45595. Hệ quả là commit đó không bisect được.
 
 ### Việc cần làm trước khi merge (ưu tiên)
 
-1. 🔴 Thêm xác thực/phân quyền nhân viên CSKH cho `/api/cskh/v1/**`, và chặn `InternalBackfillController` khỏi truy cập bên ngoài.
-2. 🟠 **Gán nhầm khách với mã chung** (1ff368a, `VoucherOwnershipStoreAdapter` 347-353): lọc theo `customerId` không ra thì code lùi về *mọi* người giữ mã, nên một lần đổi mã ghi REDEEM cho tất cả khách.
-3. 🟠 **Chống trùng `offer_audit`**: khoá thiếu msisdn/customer (mã chung chỉ ghi được cho khách đầu tiên). Việc chống trùng là check-then-act, không có unique constraint. Cần changeset mới thêm unique key.
-4. 🟠 **Consumer nuốt lỗi** (1ff368a): bắt `RuntimeException`, log rồi vẫn ack, làm mất event của lịch sử append-only. Cần retry/DLT.
-5. 🟠 **Backfill không dừng**: b30d84d `AND status <> 'REVOKED'` bỏ sót dòng `status` NULL (cột nullable, changeset 005), nên `hasNext` luôn true. 9f26958 cũng lặp mãi `page=0` khi còn row không lấp được. Nên phân trang keyset và tính `hasNext` theo số dòng thực ghi.
-6. 🟠 **Executor `campaignDetailExecutor`** (5685a0c, `BffAsyncConfig` 55-65): queue 50, AbortPolicy mặc định. Khoảng 9-10 request đồng thời với downstream chậm là `RejectedExecutionException`, thành HTTP 500. `join()` không có timeout, không có circuit breaker, Feign read-timeout 60s.
-7. 🟠 **Search sai so với spec** (489122a/d2df587): lọc `productCode` bằng `LIKE '%X%'` trên JSON (khớp cả sản phẩm loại trừ và mã con), sort lệch spec. Nhánh bản ghi giả lập không lọc segment (số bất kỳ cũng thấy mọi chiến dịch). INNER JOIN `campaign_stock` làm rơi chiến dịch hoàn tiền.
-8. 🟠 Giá trị ngoài contract: `assignment_status='revoked'`. `campaign_stock` cũ do không refresh khi phát/thu hồi mã. `SourceAvailability` báo sai "nguồn lỗi" khi chiến dịch chỉ là không khai phần đó. `applicableProducts=[]` bị hiểu là "mọi sản phẩm" khi JSON hỏng hoặc chỉ có loại trừ.
-9. 🟠 Thiếu index `voucher_ownership.voucher_code` (mỗi event đổi mã full scan). Log `warn` in nguyên event có `customerPhone` (cần xác nhận `toString`).
-10. 🟡 Test: adapter SQL, consumer và web layer (400/404/502) chưa có test. Một số test chỉ chạy với store mock nên che lỗi (vd `shared_code_writes_one_row_per_owner`).
+1. 🟠 **Gán nhầm khách với mã chung** (1ff368a, `VoucherOwnershipStoreAdapter` 347-353): lọc theo `customerId` không ra thì code lùi về *mọi* người giữ mã, nên một lần đổi mã ghi REDEEM cho tất cả khách.
+2. 🟠 **Chống trùng `offer_audit`**: khoá thiếu msisdn/customer (mã chung chỉ ghi được cho khách đầu tiên). Việc chống trùng là check-then-act, không có unique constraint. Cần changeset mới thêm unique key.
+3. 🟠 **Consumer nuốt lỗi** (1ff368a): bắt `RuntimeException`, log rồi vẫn ack, làm mất event của lịch sử append-only. Cần retry/DLT.
+4. 🟠 **Backfill không dừng**: b30d84d `AND status <> 'REVOKED'` bỏ sót dòng `status` NULL (cột nullable, changeset 005), nên `hasNext` luôn true. 9f26958 cũng lặp mãi `page=0` khi còn row không lấp được. Nên phân trang keyset và tính `hasNext` theo số dòng thực ghi.
+5. 🟠 **Executor `campaignDetailExecutor`** (5685a0c, `BffAsyncConfig` 55-65): queue 50, AbortPolicy mặc định. Khoảng 9-10 request đồng thời với downstream chậm là `RejectedExecutionException`, thành HTTP 500. `join()` không có timeout, không có circuit breaker, Feign read-timeout 60s.
+6. 🟠 **Search sai so với spec** (489122a/d2df587): lọc `productCode` bằng `LIKE '%X%'` trên JSON (khớp cả sản phẩm loại trừ và mã con), sort lệch spec. Nhánh bản ghi giả lập không lọc segment (số bất kỳ cũng thấy mọi chiến dịch). INNER JOIN `campaign_stock` làm rơi chiến dịch hoàn tiền.
+7. 🟠 Giá trị ngoài contract: `assignment_status='revoked'`. `campaign_stock` cũ do không refresh khi phát/thu hồi mã. `SourceAvailability` báo sai "nguồn lỗi" khi chiến dịch chỉ là không khai phần đó. `applicableProducts=[]` bị hiểu là "mọi sản phẩm" khi JSON hỏng hoặc chỉ có loại trừ.
+8. 🟠 Thiếu index `voucher_ownership.voucher_code` (mỗi event đổi mã full scan). Log `warn` in nguyên event có `customerPhone` (cần xác nhận `toString`).
+9. 🟡 Test: adapter SQL, consumer và web layer (400/404/502) chưa có test. Một số test chỉ chạy với store mock nên che lỗi (vd `shared_code_writes_one_row_per_owner`).
 
 ### Ghi chú chung
 - Không phát hiện SQL injection: mọi tham số đều bind, ORDER BY cố định. Tiền dùng `BigDecimal`, thời gian dùng `Instant`. Migration là file mới và immutable.
@@ -62,7 +65,7 @@
 
 | Mức | File:line | Vấn đề | Đề xuất |
 |---|---|---|---|
-| 🔴 Blocker | `CustomerCareController.java:46-52`, `CustomerCareApi.java:36-41` | Vùng `/api/cskh/v1` không có filter xác thực nào (`VtmAuthFilter` chỉ lọc `/api/v1/`). Ở commit này hai endpoint còn trả 501 nên chưa lộ dữ liệu, nhưng ở đầu nhánh (5685a0c) search/audit/campaign-detail đã trả dữ liệu thật mà vẫn chưa có filter (javadoc "Cảnh báo bảo mật" còn nguyên, không có filter/SecurityFilterChain nào cho `cskh`). Kết quả: ai gọi được tới service là tra được ưu đãi + lịch sử của bất kỳ msisdn nào (PII), dù spec ghi 401/403 | Bổ sung filter xác thực nhân viên/service-to-service (Keycloak client-credentials hoặc mTLS) và kiểm tra role CSKH TRƯỚC khi merge PR. Nếu chưa kịp thì chặn ở gateway/network policy và ghi rõ trong PR |
+| ⚪ Dismissed (ngoài phạm vi — auth CSKH triển khai theo hướng khác) | `CustomerCareController.java:46-52`, `CustomerCareApi.java:36-41` | Vùng `/api/cskh/v1` không có filter xác thực nào (`VtmAuthFilter` chỉ lọc `/api/v1/`). Ở commit này hai endpoint còn trả 501 nên chưa lộ dữ liệu, nhưng ở đầu nhánh (5685a0c) search/audit/campaign-detail đã trả dữ liệu thật mà vẫn chưa có filter (javadoc "Cảnh báo bảo mật" còn nguyên, không có filter/SecurityFilterChain nào cho `cskh`). Kết quả: ai gọi được tới service là tra được ưu đãi + lịch sử của bất kỳ msisdn nào (PII), dù spec ghi 401/403 | Bổ sung filter xác thực nhân viên/service-to-service (Keycloak client-credentials hoặc mTLS) và kiểm tra role CSKH TRƯỚC khi merge PR. Nếu chưa kịp thì chặn ở gateway/network policy và ghi rõ trong PR |
 | 🟠 Major | `CustomerCareController.java:64` | `OpenApiWebMvcResource` là dependency bắt buộc (field `final`), nhưng bean này chỉ được springdoc tạo khi `springdoc.api-docs.enabled=true`. Môi trường nào tắt api-docs (hay gặp ở prod) thì cả context không khởi động được, chứ không trả 503 như spec ghi ở `CustomerCareApi.java:76` | Inject `ObjectProvider<OpenApiWebMvcResource>` rồi trả 503 khi không có bean. Xác nhận config prod/staging bên ngoài repo có bật api-docs không |
 | 🟡 Minor | `CustomerCareController.java:142` | `(ObjectNode) full.path("components").path("schemas")`: khi tài liệu không có `components.schemas`, `path()` trả `MissingNode` nên ép kiểu ném `ClassCastException` (500) trước khi tới dòng kiểm tra `isMissingNode()` ở dòng 143. Lỗi vẫn còn ở 5685a0c (dòng 160) | Đọc ra `JsonNode` trước, kiểm tra `isObject()` rồi mới ép kiểu |
 | 🟡 Minor | `CustomerCareController.java:84-87` | `catch (Exception e)` rồi đưa `e.getMessage()` vào lý do của `ResponseStatusException`, có thể lộ chi tiết nội bộ ra client (rule BE §8: không trả message exception thô) | Trả message cố định, chỉ log chi tiết; bắt exception cụ thể (`IOException`, `ClassCastException`) |
@@ -106,7 +109,7 @@
 | 🔵 Info | `CskhCampaignFieldsBackfillService.java` | Không có unit test cho service backfill mới (các commit sau cũng không thêm `CskhCampaignFieldsBackfillServiceTest`) | Thêm test: dryRun không ghi, row skip, đếm updated/skipped |
 | 🔵 Info | `InternalBackfillController.java:18` | Import `CskhCampaignFieldsBackfillUseCase` chen giữa hai import `CouponDisplay*`, sai thứ tự alphabet (không phải lỗi Sonar) | Organize imports |
 
-**Ghi chú:** Hướng tiếp cận (tra REST ngoài transaction, chỉ bọc transaction ngắn ở từng lần update trong adapter, `dryRun=true` mặc định) đúng rule "không gọi API ngoài trong @Transactional". Ghi lại cùng giá trị nhiều lần là vô hại nên backfill idempotent về giá trị. Endpoint `/internal/backfill` không có xác thực, nhưng đó là mẫu có sẵn của repo (dựa vào mạng nội bộ). Nên xác nhận gateway không mở `/internal/**` ra ngoài. Không có code bị comment-out, import thừa hay literal lặp ≥3 lần (S125/S1128/S1192 sạch). Javadoc của field `campaignCode` đặt sau `@Column` (dòng 34) cũng đã được sửa thứ tự ở 4c45595.
+**Ghi chú:** Hướng tiếp cận (tra REST ngoài transaction, chỉ bọc transaction ngắn ở từng lần update trong adapter, `dryRun=true` mặc định) đúng rule "không gọi API ngoài trong @Transactional". Ghi lại cùng giá trị nhiều lần là vô hại nên backfill idempotent về giá trị. Endpoint `/internal/backfill` chỉ dùng nội bộ (đã xác nhận: gateway chỉ mở `/api/v1/` ra ngoài). Không có code bị comment-out, import thừa hay literal lặp ≥3 lần (S125/S1128/S1192 sạch). Javadoc của field `campaignCode` đặt sau `@Column` (dòng 34) cũng đã được sửa thứ tự ở 4c45595.
 
 ---
 
@@ -224,13 +227,13 @@
 
 **Phạm vi:** Triển khai `GET /api/cskh/v1/customer-offers`: controller uỷ quyền cho `CustomerCareSearchService`, adapter native SQL `UNION ALL` hai nhánh (voucher view + cashback_participation) rồi lọc, đếm, phân trang, đánh dấu `hasHistory` bằng một câu IN. 7 file, +418/-3.
 
-**Đánh giá:** ❌ Chặn merge
+**Đánh giá:** ⚠️ Cần sửa (blocker xác thực đã loại khỏi phạm vi)
 
 **Findings:**
 
 | Mức | File:line | Vấn đề | Đề xuất |
 |---|---|---|---|
-| 🔴 Blocker | `…/web/CustomerCareController.java:47-50, 95-104` | Commit này nối endpoint vào dữ liệu thật trong khi Javadoc ngay trên class ghi rõ vùng `/api/cskh/v1` **chưa có filter xác thực nào** (`VtmAuthFilter` chỉ lọc `/api/v1/`). Ai gọi tới được BFF cũng tra được ưu đãi, mã voucher, lịch sử của **bất kỳ số thuê bao nào** mà không cần token (IDOR/lộ PII). Không có `@PreAuthorize` hay check role CSKH. Tới 5685a0c vẫn chưa sửa, cảnh báo vẫn còn ở dòng 52. | Thêm filter xác thực token nhân viên (Keycloak) cho `/api/cskh/v1/**` và `@PreAuthorize` với role CSKH khai báo tập trung. Cần có test 401/403 trước khi merge vào staging. |
+| ⚪ Dismissed (ngoài phạm vi — auth CSKH triển khai theo hướng khác) | `…/web/CustomerCareController.java:47-50, 95-104` | Commit này nối endpoint vào dữ liệu thật trong khi Javadoc ngay trên class ghi rõ vùng `/api/cskh/v1` **chưa có filter xác thực nào** (`VtmAuthFilter` chỉ lọc `/api/v1/`). Ai gọi tới được BFF cũng tra được ưu đãi, mã voucher, lịch sử của **bất kỳ số thuê bao nào** mà không cần token (IDOR/lộ PII). Không có `@PreAuthorize` hay check role CSKH. Tới 5685a0c vẫn chưa sửa, cảnh báo vẫn còn ở dòng 52. | Thêm filter xác thực token nhân viên (Keycloak) cho `/api/cskh/v1/**` và `@PreAuthorize` với role CSKH khai báo tập trung. Cần có test 401/403 trước khi merge vào staging. |
 | 🟠 Major | `…/persistence/CustomerOfferQueryAdapter.java:104-105` | Thứ tự sắp xếp lệch spec. Spec (`CustomerCareApi` Javadoc, SRS 2.3): ngày bắt đầu chiến dịch DESC → ngày gán DESC → ngày sử dụng DESC → mã chiến dịch ASC. Code đang sort `campaign_start_date DESC, campaign_id, voucher_code`. Chưa sửa ở commit sau. | `ORDER BY t.campaign_start_date DESC, t.assigned_at DESC, t.used_at DESC, t.campaign_code ASC`, rồi thêm `t.campaign_id, t.voucher_code` làm tie-breaker để phân trang ổn định. |
 | 🟠 Major | `…/persistence/CustomerOfferQueryAdapter.java:149-152` | Lọc `productCode` bằng `applicable_products LIKE '%X%'`. Theo cc01d14, cột này là **mảng JSON** (có id nội bộ, mã nguồn, ảnh, và cả item `EXCLUDED`). Hậu quả: (1) chiến dịch **loại trừ** sản phẩm X vẫn khớp khi lọc theo X, (2) khớp chuỗi con (`SKU1` khớp `SKU10`, khớp cả tên/ảnh). Chưa sửa ở commit sau, cc01d14 chỉ sửa phần đọc. | Dùng `JSON_CONTAINS`/`JSON_SEARCH` (MariaDB) trên đúng field mã sản phẩm và loại item EXCLUDED, hoặc chuẩn hoá ra bảng con `campaign_product(campaign_id, product_code, type)`. |
 | 🟠 Major | `…/app/service/CustomerCareSearchService.java:42-49` | `splitProducts` cắt chuỗi theo dấu phẩy, trong khi read model lưu JSON, nên `applicableProducts` trả ra các mảnh JSON vỡ. | **Đã sửa ở cc01d14** (`ApplicableProductScope`). |
@@ -286,13 +289,13 @@
 
 **Phạm vi:** Triển khai `GET /api/cskh/v1/customer-offers/audit`: kiểm `to >= from` (400 qua `InvalidParamsExceptionHandler`), 404 khi không có chiến dịch, `OfferAuditQueryAdapter` native SQL đếm và phân trang `offer_audit`. Đổi từ vựng action/result đang ghi sang đúng spec (`VOUCHER_ASSIGNED`, `SESSION_CONFIRMED`, `CASHBACK_CREATED`, `SUCCESS`/`FAILED`). 14 file, +348/-26.
 
-**Đánh giá:** ❌ Chặn merge (do lỗ hổng xác thực kế thừa từ 489122a, giờ mở thêm endpoint lịch sử)
+**Đánh giá:** ⚠️ Cần sửa (nhẹ; blocker xác thực đã loại khỏi phạm vi)
 
 **Findings:**
 
 | Mức | File:line | Vấn đề | Đề xuất |
 |---|---|---|---|
-| 🔴 Blocker | `…/web/CustomerCareController.java:112-120` | Endpoint thứ hai trả dữ liệu thật (lịch sử đổi thưởng, mã giao dịch hoàn tiền, ghi chú lỗi của khách) mà vùng `/api/cskh/v1` vẫn chưa có xác thực/phân quyền. Cùng gốc với blocker ở 489122a, chưa sửa tới 5685a0c. | Như 489122a: filter xác thực nhân viên + `@PreAuthorize` role CSKH, có test 401/403. |
+| ⚪ Dismissed (ngoài phạm vi — auth CSKH triển khai theo hướng khác) | `…/web/CustomerCareController.java:112-120` | Endpoint thứ hai trả dữ liệu thật (lịch sử đổi thưởng, mã giao dịch hoàn tiền, ghi chú lỗi của khách) mà vùng `/api/cskh/v1` vẫn chưa có xác thực/phân quyền. Cùng gốc với blocker ở 489122a, chưa sửa tới 5685a0c. | Như 489122a: filter xác thực nhân viên + `@PreAuthorize` role CSKH, có test 401/403. |
 | 🟡 Minor | `…/app/service/CashbackAuditProjectionService.java:25-28`, `…/app/service/OfferAuditProjectionService.java:30-34` | Đổi giá trị lưu (`CASHBACK`→`CASHBACK_CREATED`, `REDEEM`→`SESSION_CONFIRMED`, `success`→`SUCCESS`…) nhưng không có migration/UPDATE cho các dòng `offer_audit` đã ghi bởi 1ff368a. Môi trường nào đã chạy nhánh này (dev) sẽ có từ vựng lẫn lộn, API trả giá trị ngoài `allowableValues`. | Thêm changeset Liquibase UPDATE ánh xạ giá trị cũ sang mới, hoặc xác nhận chưa môi trường nào có dữ liệu cũ. |
 | 🟡 Minor | `…/app/service/CashbackAuditProjectionService.java:73, 81` | Giao dịch hoàn tiền **thất bại** cũng ghi action `CASHBACK_CREATED` (kèm `FAILED`). Nghĩa sai: chưa có khoản hoàn tiền nào được tạo. Spec có sẵn `TRANSACTION_QUALIFIED`/`TRANSACTION_CONFIRMED`. | Chọn action theo loại sự kiện (vd thất bại thì ghi `TRANSACTION_CONFIRMED` + `FAILED`), chốt lại với BA. |
 | 🟡 Minor | `…/app/port/in/CustomerCareServicePort.java:27-32` | Chèn `AuditQuery` vào giữa, làm Javadoc của `SearchQuery` (dòng 27-31) bị mồ côi: hai khối Javadoc liền nhau, `SearchQuery` mất tài liệu. Vẫn còn ở 5685a0c. | Chuyển `AuditQuery` (kèm Javadoc của nó) xuống dưới `SearchQuery`. |
@@ -333,7 +336,7 @@
 
 **Phạm vi:** Thêm `GET /api/cskh/v1/campaign-details/{campaignId}`. Endpoint gọi pp-campaign trước (nguồn chính), sau đó fan-out song song 4 nguồn phụ (pp-coupon, pp-pricing-engine, pp-validation bindings, app-config), rồi chạy đợt 3 song song (pp-product phân giải tên + cây điều kiện). Các kết quả được gộp qua 6 mapper thành `CampaignDetailResponse`, kèm khối `SourceAvailability`. Thêm executor riêng `campaignDetailExecutor`, 4 port + 4 adapter, DTO mới và 2 file test. Tổng 45 file, +2780/-38.
 
-**Đánh giá:** ⚠️ Cần sửa (không có blocker riêng của commit. Lỗ hổng xác thực vùng `/api/cskh/v1` có từ trước, nhưng phải đóng trước khi lên production)
+**Đánh giá:** ⚠️ Cần sửa
 
 **Findings:**
 
@@ -342,7 +345,7 @@
 | 🟠 Major | `adapter/config/BffAsyncConfig.java:55-65` + `service/CampaignDetailAggregationService.java:142-143` | Executor 4-8 luồng, queue 50, dùng rejection policy mặc định (`AbortPolicy`). Mỗi request nộp 6 tác vụ, nên khoảng 9-10 request đồng thời với downstream chậm là đầy 58 slot. Khi đó `CompletableFuture.supplyAsync` ném `RejectedExecutionException` **đồng bộ** ở luồng request. Lỗi này không đi qua `.exceptionally()`, nên cả lời gọi thành HTTP 500 generic, trái với lời hứa "nguồn phụ best-effort" và không phải 502/503 như spec. | Bọc `supplyAsync` trong try/catch `RejectedExecutionException` để trả fallback (đánh dấu nguồn không sẵn sàng), hoặc set `CallerRunsPolicy` / bulkhead. Viết test cho tình huống pool đầy. |
 | 🟠 Major | `CampaignDetailAggregationService.java:93-94,127-128`; 4 adapter mới (`CampaignDetailViewAdapter`, `CouponConfigViewAdapter`, `DiscountFormulaViewAdapter`, `ValidationRuleViewAdapter`); `application.properties:395` | `join()` không có timeout. Các adapter mới không có `@CircuitBreaker`/`@Retry` (khác `RedemptionApiAdapter`), trong khi Feign `read-timeout=60000`. Trường hợp xấu nhất, một request treo khoảng 3 x 60s (nguồn chính, rồi đợt 2, rồi đợt 3) và giữ luồng pool suốt thời gian đó, làm nặng thêm finding trên. Downstream lỗi liên tục cũng không bị ngắt mạch. | Dùng `orTimeout`/`completeOnTimeout(fallback)` cho từng tác vụ phụ, với ngân sách tổng khoảng 3-5s. Cấu hình read-timeout riêng cho các client `pp-*-detail`. Thêm circuit breaker cho 4 adapter (nguồn chính map `CallNotPermittedException` về 502, handler đã có sẵn). |
 | 🟠 Major | `CampaignDetailAggregationService.java:104-108` vs `dto/cskh/campaign/SourceAvailability.java:8-12`; `DiscountFormulaViewAdapter.java:42-45`; `ValidationRuleViewAdapter.java:40-47`; `CouponConfigViewAdapter.java:31-35` | Hợp đồng `SourceAvailability` ghi rõ "true nghĩa là nguồn đã trả lời được, **kể cả khi** chiến dịch chưa khai phần đó". Code thì set cờ bằng `config.isPresent()`, `formula.isPresent()`, `!bindings.isEmpty()`, mà adapter lại gộp "không có dữ liệu" (danh sách rỗng / 404) và "dịch vụ lỗi" về cùng một giá trị `Optional.empty()`/`List.of()`. Hệ quả: chiến dịch không gắn rule hoặc không có công thức sẽ báo `validationAvailable=false`/`discountAvailable=false`. Đúng thứ khối này sinh ra để chống lại là CSKH đọc dữ liệu nghiệp vụ thành sự cố hạ tầng. Javadoc `DiscountFormulaViewAdapter:19-22` còn nói chọn API lô **để** phân biệt được 2 nghĩa, nhưng code lại xoá mất sự phân biệt đó. Ngoài ra lỗi của cây điều kiện và app-config không phản ánh vào khối này. Test `secondaryFailuresDegradeGracefully` (dòng 121-134) đang khoá cứng hành vi sai: mock trả `List.of()`/`Optional.empty()` (tức là "không có dữ liệu") rồi assert `false`. | Cho adapter trả kiểu 3 trạng thái, ví dụ `SourceResult<T>{available, value}`, hoặc ném lỗi riêng để `secondary()` hạ cờ. Thêm cờ cho conditions. Viết test tách riêng "nguồn trả rỗng" (cờ true) và "nguồn lỗi" (cờ false). |
-| 🟠 Major (có từ trước, commit này mở rộng) | `adapter/in/web/CustomerCareController.java:52-55` | Javadoc tự cảnh báo `/api/cskh/v1` CHƯA có filter xác thực (`VtmAuthFilter` chỉ lọc `/api/v1/`). Commit thêm một endpoint không xác thực nữa, trả cấu hình chiến dịch nội bộ (ngân sách, rule, tham số sinh mã, mã chung `sharedCode`/`customCode`, createdBy/updatedBy). Header Authorization của request vẫn được forward sang 4 downstream. | Bổ sung filter xác thực nhân viên + `@PreAuthorize` theo role CSKH trước khi merge lên môi trường có dữ liệu thật. Cân nhắc che `sharedCode`. |
+| ⚪ Dismissed (ngoài phạm vi — auth CSKH triển khai theo hướng khác) | `adapter/in/web/CustomerCareController.java:52-55` | Javadoc tự cảnh báo `/api/cskh/v1` CHƯA có filter xác thực (`VtmAuthFilter` chỉ lọc `/api/v1/`). Commit thêm một endpoint không xác thực nữa, trả cấu hình chiến dịch nội bộ (ngân sách, rule, tham số sinh mã, mã chung `sharedCode`/`customCode`, createdBy/updatedBy). Header Authorization của request vẫn được forward sang 4 downstream. | Bổ sung filter xác thực nhân viên + `@PreAuthorize` theo role CSKH trước khi merge lên môi trường có dữ liệu thật. Cân nhắc che `sharedCode`. |
 | 🟡 Minor | `adapter/out/external/ProductLookupAdapter.java:107-122` vs `support/campaign/ScopeResolver.java:20-22` | ScopeResolver ghi "tra một lần cho mỗi loại", nhưng `lookupCollectionLabelsByIds` gọi `fetchCollection` **tuần tự, mỗi bộ sưu tập một lần**, tức N+1 call với timeout 60s mỗi lần. Ở chỗ này chiến dịch gắn nhiều bộ sưu tập vẫn sinh ra N lời gọi. | Dùng endpoint lô của pp-product nếu có. Nếu không thì sửa javadoc và đặt giới hạn số collection / ngân sách thời gian. |
 | 🟡 Minor | `CampaignDetailAggregationService.java:162` | Chỉ lùi về `campaign.validationRuleId()` khi `bindings` rỗng. Nếu binding đầu tiên có `ruleId` null/blank thì trả `null` dù chiến dịch có rule id. Các binding sau `get(0)` bị bỏ qua. | Viết `ruleId = pick(firstNonBlank(binding.ruleId), campaign.validationRuleId())`. |
 | 🟡 Minor | `support/campaign/ValiditySectionMapper.java:100-103` | Khi lùi về bản chụp pp-campaign, `ValidityHoursPerDay.dayOfWeek` bị bỏ (truyền `null` cho `daysOfWeek`). CSKH thấy khung giờ mà không biết áp cho thứ nào. Nguồn có dữ liệu này. | Map `dayOfWeek` (String) sang `List<Integer>` theo quy ước "Thứ Hai = 1". |
@@ -365,3 +368,4 @@
 - Đưa chuỗi mô tả 401/403/page/size ra hằng số (S1192) và `copyIfPresent` trong controller là refactor hợp lý.
 
 ---
+
